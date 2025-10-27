@@ -186,51 +186,57 @@ export const GitHubSync = () => {
 
   return (
     <div className="space-y-6">
-      <Card className="p-6">
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block">GitHub Repository URL</label>
-            <div className="flex gap-2">
-              <Input
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
-                placeholder="https://github.com/owner/repo"
-                className="flex-1"
-              />
-              <Button 
-                onClick={fetchRepo} 
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    <Github className="mr-2 h-4 w-4" />
-                    Fetch Repo
-                  </>
-                )}
-              </Button>
-            </div>
+      <div className="space-y-4">
+        <div>
+          <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+            <Github className="h-4 w-4 text-primary" />
+            GitHub Repository URL
+          </label>
+          <div className="flex gap-2">
+            <Input
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="flex-1 bg-secondary/50 border-border transition-all focus:border-primary"
+            />
+            <Button 
+              onClick={fetchRepo} 
+              disabled={isLoading}
+              className="bg-gradient-to-r from-primary to-cyan-500 hover:from-primary/90 hover:to-cyan-500/90 shadow-[var(--shadow-glow)]"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <Github className="mr-2 h-4 w-4" />
+                  Fetch Repo
+                </>
+              )}
+            </Button>
           </div>
         </div>
-      </Card>
+      </div>
 
       {repoData && (
-        <Card className="p-6">
+        <Card className="p-6 bg-gradient-to-br from-card to-card/50 border-primary/20 shadow-[var(--shadow-card)] animate-in fade-in duration-500">
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
-                <h3 className="font-semibold text-lg">{repoData.owner}/{repoData.repo}</h3>
-                <p className="text-sm text-muted-foreground">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Github className="h-5 w-5 text-primary" />
+                  {repoData.owner}/{repoData.repo}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
                   {repoData.files.length} files loaded (showing first 20 of {repoData.totalFiles})
                 </p>
               </div>
               <Button 
                 onClick={analyzeFiles} 
                 disabled={isLoading}
+                className="bg-gradient-to-r from-primary to-cyan-500 hover:from-primary/90 hover:to-cyan-500/90"
               >
                 {isLoading ? (
                   <>
@@ -247,13 +253,16 @@ export const GitHubSync = () => {
             </div>
 
             {analyzedFiles.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium">Analysis Results</h4>
+              <div className="space-y-4 pt-4 border-t border-border">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <FileCode className="h-4 w-4 text-success" />
+                    Analysis Results
+                  </h4>
                   <Button 
                     onClick={pushFixes} 
                     disabled={isPushing}
-                    variant="default"
+                    className="bg-gradient-to-r from-success to-success/80 hover:from-success/90 hover:to-success/70"
                   >
                     {isPushing ? (
                       <>
@@ -269,20 +278,22 @@ export const GitHubSync = () => {
                   </Button>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-[400px] overflow-y-auto">
                   {analyzedFiles.map((file, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                      className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border/50 transition-all hover:bg-secondary hover:border-primary/20"
                     >
                       <div className="flex-1">
-                        <p className="font-mono text-sm">{file.path}</p>
+                        <p className="font-mono text-sm text-primary">{file.path}</p>
                         <p className="text-xs text-muted-foreground mt-1">
                           {file.issues?.length || 0} issues found
                         </p>
                       </div>
                       {file.fixedContent !== file.content && (
-                        <Badge variant="outline">Fixed</Badge>
+                        <Badge variant="outline" className="bg-success/20 text-success border-success/30">
+                          Fixed
+                        </Badge>
                       )}
                     </div>
                   ))}
