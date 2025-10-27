@@ -45,7 +45,7 @@ export const GitHubSync = () => {
 
     try {
       const response = await fetch(
-        'http://localhost:3001/functions/v1/fetch-repo',
+        `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/fetch-repo`,
         {
           method: 'POST',
           headers: {
@@ -88,7 +88,7 @@ export const GitHubSync = () => {
     for (const file of repoData.files) {
       try {
         const response = await fetch(
-          'http://localhost:3001/functions/v1/analyze-code',
+          `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/analyze-code`,
           {
             method: 'POST',
             headers: {
@@ -144,7 +144,7 @@ export const GitHubSync = () => {
       }
 
       const response = await fetch(
-        'http://localhost:3001/functions/v1/push-fixes',
+        `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/push-fixes`,
         {
           method: 'POST',
           headers: {
