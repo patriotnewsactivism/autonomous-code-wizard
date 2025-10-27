@@ -1,5 +1,7 @@
 import { CodeEditor } from '@/components/CodeEditor';
+import { GitHubSync } from '@/components/GitHubSync';
 import { Code2 } from 'lucide-react';
+import { TabsContentWrapper, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs-content';
 
 const Index = () => {
   return (
@@ -12,11 +14,24 @@ const Index = () => {
             </div>
             <h1 className="text-4xl font-bold mb-2">Auto Code Fixer</h1>
             <p className="text-xl text-muted-foreground">
-              AI-powered code analysis and automatic fixing
+              AI-powered code analysis and automatic fixing with GitHub sync
             </p>
           </div>
           
-          <CodeEditor />
+          <TabsContentWrapper defaultValue="manual" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="manual">Manual Code</TabsTrigger>
+              <TabsTrigger value="github">GitHub Repository</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="manual">
+              <CodeEditor />
+            </TabsContent>
+            
+            <TabsContent value="github">
+              <GitHubSync />
+            </TabsContent>
+          </TabsContentWrapper>
         </div>
       </div>
     </div>

@@ -1,2 +1,8 @@
 [functions.analyze-code]
 verify_jwt = false
+
+[functions.fetch-repo]
+verify_jwt = false
+
+[functions.push-fixes]
+verify_jwt = false
