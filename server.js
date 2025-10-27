@@ -1,9 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execPromise = promisify(exec);
 
 const app = express();
 const port = 3001;
@@ -11,9 +7,12 @@ const port = 3001;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Simple code analysis function
+// Enhanced code analysis function with more detailed information
 function analyzeCode(code) {
   const issues = [];
+  let fixedCode = code;
+  
+  // Split code into lines for analysis
   const lines = code.split('\n');
   
   // Check for common issues
@@ -24,50 +23,132 @@ function analyzeCode(code) {
     // Check for console.log statements
     if (line.includes('console.log')) {
       issues.push({
-        type: 'suggestion',
+        type: 'warning',
         category: 'logging',
         line: lineNum,
-        description: 'Consider removing console.log statements in production code',
-        severity: 'low'
+        column: line.indexOf('console.log') + 1,
+        message: 'Console.log statement found',
+        description: 'Consider removing console.log statements in production code. Use a proper logging library instead.',
+        severity: 'medium',
+        code: line.trim()
       });
     }
     
     // Check for var usage
-    if (line.includes('var ')) {
+    if (line.match(/\bvar\s+/)) {
+      const varMatch = line.match(/\bvar\s+(\w+)/);
+      const varName = varMatch ? varMatch[1] : 'variable';
+      
       issues.push({
-        type: 'suggestion',
+        type: 'error',
         category: 'best-practice',
         line: lineNum,
-        description: 'Prefer const or let over var for variable declarations',
-        severity: 'medium'
+        column: line.indexOf('var') + 1,
+        message: `Use 'const' or 'let' instead of 'var'`,
+        description: `The variable '${varName}' is declared with 'var'. Modern JavaScript should use 'const' for constants or 'let' for variables that will be reassigned.`,
+        severity: 'high',
+        code: line.trim()
       });
     }
     
-    // Check for missing semicolons
-    if (line.trim() !== '' && !line.trim().endsWith(';') && !line.trim().endsWith('{') && !line.trim().endsWith('}')) {
-      // Simple check - not comprehensive
-      if (line.includes('let ') || line.includes('const ') || line.includes('return ') || line.includes('throw ')) {
-        issues.push({
-          type: 'suggestion',
-          category: 'syntax',
-          line: lineNum,
-          description: 'Consider adding semicolons to terminate statements',
-          severity: 'low'
-        });
-      }
+    // Check for == instead of ===
+    if (line.includes('==') && !line.includes('===') && !line.includes('!=') && !line.includes('!==')) {
+      issues.push({
+        type: 'warning',
+        category: 'best-practice',
+        line: lineNum,
+        column: line.indexOf('==') + 1,
+        message: 'Use strict equality (===) instead of loose equality (==)',
+        description: 'Loose equality (==) can lead to unexpected type coercion. Always use strict equality (===) for comparisons.',
+        severity: 'medium',
+        code: line.trim()
+      });
+    }
+    
+    // Check for missing semicolons (simple check)
+    const trimmedLine = line.trim();
+    if (trimmedLine && 
+        !trimmedLine.endsWith(';') && 
+        !trimmedLine.endsWith('{') && 
+        !trimmedLine.endsWith('}') &&
+        !trimmedLine.endsWith(',') &&
+        !trimmedLine.startsWith('//') &&
+        !trimmedLine.startsWith('/*') &&
+        !trimmedLine.startsWith('*') &&
+        (trimmedLine.includes('let ') || 
+         trimmedLine.includes('const ') || 
+         trimmedLine.includes('return ') ||
+         trimmedLine.match(/^\w+\s*=/))) {
+      
+      issues.push({
+        type: 'suggestion',
+        category: 'syntax',
+        line: lineNum,
+        column: line.length,
+        message: 'Missing semicolon',
+        description: 'Consider adding semicolons to terminate statements for consistency and to avoid potential issues.',
+        severity: 'low',
+        code: line.trim()
+      });
     }
   }
   
-  // Simple code fixing
-  let fixedCode = code;
-  
+  // Apply fixes to the code
   // Replace var with let
   fixedCode = fixedCode.replace(/\bvar\b/g, 'let');
+  
+  // Replace == with === (simple replacement)
+  fixedCode = fixedCode.replace(/([^=!])==([^=])/g, '$1===$2');
+  
+  // Add semicolons where missing (simple approach)
+  const fixedLines = fixedCode.split('\n');
+  for (let i = 0; i < fixedLines.length; i++) {
+    const line = fixedLines[i];
+    const trimmedLine = line.trim();
+    if (trimmedLine && 
+        !trimmedLine.endsWith(';') && 
+        !trimmedLine.endsWith('{') && 
+        !trimmedLine.endsWith('}') &&
+        !trimmedLine.endsWith(',') &&
+        !trimmedLine.startsWith('//') &&
+        !trimmedLine.startsWith('/*') &&
+        !trimmedLine.startsWith('*') &&
+        (trimmedLine.includes('let ') || 
+         trimmedLine.includes('const ') || 
+         trimmedLine.includes('return ') ||
+         trimmedLine.match(/^\w+\s*=/))) {
+      fixedLines[i] = line + ';';
+    }
+  }
+  fixedCode = fixedLines.join('\n');
+  
+  // Generate summary
+  const errorCount = issues.filter(i => i.type === 'error').length;
+  const warningCount = issues.filter(i => i.type === 'warning').length;
+  const suggestionCount = issues.filter(i => i.type === 'suggestion').length;
+  
+  let summary = `Analysis complete: `;
+  if (errorCount > 0) summary += `${errorCount} error${errorCount > 1 ? 's' : ''}, `;
+  if (warningCount > 0) summary += `${warningCount} warning${warningCount > 1 ? 's' : ''}, `;
+  if (suggestionCount > 0) summary += `${suggestionCount} suggestion${suggestionCount > 1 ? 's' : ''}`;
+  
+  if (issues.length === 0) {
+    summary = 'No issues found! Your code looks good.';
+  } else {
+    // Remove trailing comma and space
+    summary = summary.replace(/, $/, '');
+  }
   
   return {
     issues,
     fixedCode,
-    summary: `Analysis complete with ${issues.length} suggestions`
+    summary,
+    stats: {
+      total: issues.length,
+      errors: errorCount,
+      warnings: warningCount,
+      suggestions: suggestionCount
+    }
   };
 }
 
@@ -75,8 +156,9 @@ function analyzeCode(code) {
 function fetchRepo(repoUrl) {
   // In a real implementation, this would actually fetch from GitHub
   // For now, we'll return a mock response
-  const owner = repoUrl.split('/')[3] || 'unknown';
-  const repo = repoUrl.split('/')[4] || 'unknown';
+  const urlParts = repoUrl.replace('https://github.com/', '').split('/');
+  const owner = urlParts[0] || 'unknown';
+  const repo = urlParts[1] || 'unknown';
   
   return {
     owner,
@@ -88,12 +170,17 @@ function fetchRepo(repoUrl) {
         sha: 'abc123'
       },
       {
+        path: 'src/utils.js',
+        content: 'function add(a,b){\nreturn a+b\n}\nvar result = add(1, 2)\nconsole.log(result)',
+        sha: 'def456'
+      },
+      {
         path: 'README.md',
         content: '# My Project\n\nThis is a sample project.',
-        sha: 'def456'
+        sha: 'ghi789'
       }
     ],
-    totalFiles: 2
+    totalFiles: 3
   };
 }
 
@@ -102,8 +189,8 @@ function pushFixes(owner, repo, files) {
   // In a real implementation, this would actually push to GitHub
   // For now, we'll return a mock response
   return {
-    pullRequestNumber: 1,
-    pullRequestUrl: `https://github.com/${owner}/${repo}/pull/1`
+    pullRequestNumber: Math.floor(Math.random() * 1000) + 1,
+    pullRequestUrl: `https://github.com/${owner}/${repo}/pull/${Math.floor(Math.random() * 1000) + 1}`
   };
 }
 
@@ -116,11 +203,14 @@ app.post('/functions/v1/analyze-code', (req, res) => {
       return res.status(400).json({ error: 'Code is required' });
     }
     
+    console.log('Analyzing code...');
     const result = analyzeCode(code);
+    console.log(`Found ${result.issues.length} issues`);
+    
     res.json(result);
   } catch (error) {
     console.error('Analysis error:', error);
-    res.status(500).json({ error: 'Failed to analyze code' });
+    res.status(500).json({ error: 'Failed to analyze code', details: error.message });
   }
 });
 
@@ -133,11 +223,15 @@ app.post('/functions/v1/fetch-repo', (req, res) => {
       return res.status(400).json({ error: 'Repository URL is required' });
     }
     
+    console.log('Fetching repository:', repoUrl);
+    
     const result = fetchRepo(repoUrl);
+    console.log(`Fetched ${result.files.length} files from ${result.owner}/${result.repo}`);
+    
     res.json(result);
   } catch (error) {
     console.error('Fetch error:', error);
-    res.status(500).json({ error: 'Failed to fetch repository' });
+    res.status(500).json({ error: 'Failed to fetch repository', details: error.message });
   }
 });
 
@@ -150,11 +244,15 @@ app.post('/functions/v1/push-fixes', (req, res) => {
       return res.status(400).json({ error: 'Owner, repo, and files are required' });
     }
     
+    console.log(`Creating PR for ${owner}/${repo} with ${files.length} files`);
+    
     const result = pushFixes(owner, repo, files);
+    console.log(`Created PR: ${result.pullRequestUrl}`);
+    
     res.json(result);
   } catch (error) {
     console.error('Push error:', error);
-    res.status(500).json({ error: 'Failed to push fixes' });
+    res.status(500).json({ error: 'Failed to push fixes', details: error.message });
   }
 });
 

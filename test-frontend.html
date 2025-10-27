@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Frontend</title>
+<script src="https://sites.super.myninja.ai/_assets/ninja-daytona-script.js"></script>
+</head>
+<body>
+    <h1>Test Frontend Communication</h1>
+    <button id="testBtn">Test Analysis</button>
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('http://localhost:3001/functions/v1/analyze-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        code: 'var message = "Hello World";\nconsole.log(message);\nif (message == "Hello World") {\n  console.log("Match found");\n}'
+                    })
+                });
+                
+                const data = await response.json();
+                document.getElementById('result').innerHTML = `
+                    <h2>Analysis Results</h2>
+                    <p><strong>Summary:</strong> ${data.summary}</p>
+                    <p><strong>Issues Found:</strong> ${data.issues.length}</p>
+                    <h3>Issues:</h3>
+                    <ul>
+                        ${data.issues.map(issue => `
+                            <li>
+                                <strong>${issue.type}</strong> (Line ${issue.line}): ${issue.description}
+                            </li>
+                        `).join('')}
+                    </ul>
+                    <h3>Fixed Code:</h3>
+                    <pre>${data.fixedCode}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('result').innerHTML = `<p>Error: ${error.message}</p>`;
+                console.error('Error:', error);
+            }
+        });
+    </script>
+</body>
+</html>
