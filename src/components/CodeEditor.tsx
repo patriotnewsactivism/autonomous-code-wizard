@@ -40,7 +40,7 @@ export const CodeEditor = () => {
 
     try {
       const response = await fetch(
-        'https://uxgmziujgesdswtjdasu.supabase.co/functions/v1/analyze-code',
+        'http://localhost:3001/functions/v1/analyze-code',
         {
           method: 'POST',
           headers: {
