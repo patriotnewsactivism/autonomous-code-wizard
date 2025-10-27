@@ -9,8 +9,9 @@ The original application had issues because it was trying to call Supabase funct
 1. Creating a proper backend server with Express.js that implements the same API endpoints
 2. Updating the frontend to point to the local backend instead of the non-existent Supabase functions
 3. Implementing real code analysis functionality in the backend with detailed issue reporting
+4. Making the application deployable to cloud platforms
 
-## How to run the application
+## How to run the application locally
 
 1. Install dependencies:
    ```bash
@@ -28,6 +29,34 @@ The original application had issues because it was trying to call Supabase funct
    ```
 
 4. Open your browser to the URL shown in the terminal (typically http://localhost:8080 or similar)
+
+## How to deploy the application
+
+### Deploying the Backend API
+
+The backend can be deployed to any cloud platform that supports Node.js. Here's how to deploy to Render.com:
+
+1. Fork this repository to your GitHub account
+2. Go to [Render.com](https://render.com/) and create an account
+3. Click "New+" and select "Web Service"
+4. Connect your GitHub account and select your forked repository
+5. Configure the service:
+   - Name: `autonomous-code-wizard-api`
+   - Environment: `Node`
+   - Build command: `npm install`
+   - Start command: `npm run server-prod`
+   - Plan: `Free`
+6. Click "Create Web Service"
+
+### Deploying the Frontend
+
+After deploying the backend, update the `.env.production` file with your backend URL, then deploy the frontend to any static hosting service like Vercel, Netlify, or GitHub Pages:
+
+1. Build the frontend:
+   ```bash
+   npm run build
+   ```
+2. Deploy the `dist` folder to your preferred hosting service
 
 ## API Endpoints
 

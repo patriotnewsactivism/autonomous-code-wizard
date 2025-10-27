@@ -40,7 +40,7 @@ export const CodeEditor = () => {
 
     try {
       const response = await fetch(
-        'http://localhost:3001/functions/v1/analyze-code',
+        `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/analyze-code`,
         {
           method: 'POST',
           headers: {
