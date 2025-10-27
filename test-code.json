@@ -1,0 +1,3 @@
+{
+  "code": "var message = &quot;Hello World&quot;;\nconsole.log(message);\nif (message == &quot;Hello World&quot;) {\n  console.log(&quot;Match found&quot;);\n}"
+}
