@@ -28,7 +28,7 @@ function analyzeCode(code) {
         line: lineNum,
         column: line.indexOf('console.log') + 1,
         message: 'Console.log statement found',
-        description: 'Consider removing console.log statements in production code. Use a proper logging library instead.',
+        description: 'Remove console.log in production; prefer a logger.',
         severity: 'medium',
         code: line.trim()
       });
@@ -45,7 +45,7 @@ function analyzeCode(code) {
         line: lineNum,
         column: line.indexOf('var') + 1,
         message: `Use 'const' or 'let' instead of 'var'`,
-        description: `The variable '${varName}' is declared with 'var'. Modern JavaScript should use 'const' for constants or 'let' for variables that will be reassigned.`,
+        description: `Replace 'var' on ${varName} to avoid accidental scope leaks.`,
         severity: 'high',
         code: line.trim()
       });
@@ -59,7 +59,7 @@ function analyzeCode(code) {
         line: lineNum,
         column: line.indexOf('==') + 1,
         message: 'Use strict equality (===) instead of loose equality (==)',
-        description: 'Loose equality (==) can lead to unexpected type coercion. Always use strict equality (===) for comparisons.',
+        description: 'Use === to avoid type coercion surprises.',
         severity: 'medium',
         code: line.trim()
       });
@@ -86,7 +86,7 @@ function analyzeCode(code) {
         line: lineNum,
         column: line.length,
         message: 'Missing semicolon',
-        description: 'Consider adding semicolons to terminate statements for consistency and to avoid potential issues.',
+        description: 'Add a semicolon for consistent termination.',
         severity: 'low',
         code: line.trim()
       });
@@ -127,17 +127,9 @@ function analyzeCode(code) {
   const warningCount = issues.filter(i => i.type === 'warning').length;
   const suggestionCount = issues.filter(i => i.type === 'suggestion').length;
   
-  let summary = `Analysis complete: `;
-  if (errorCount > 0) summary += `${errorCount} error${errorCount > 1 ? 's' : ''}, `;
-  if (warningCount > 0) summary += `${warningCount} warning${warningCount > 1 ? 's' : ''}, `;
-  if (suggestionCount > 0) summary += `${suggestionCount} suggestion${suggestionCount > 1 ? 's' : ''}`;
-  
-  if (issues.length === 0) {
-    summary = 'No issues found! Your code looks good.';
-  } else {
-    // Remove trailing comma and space
-    summary = summary.replace(/, $/, '');
-  }
+  let summary = issues.length === 0
+    ? 'No issues found.'
+    : `Found ${issues.length} issue${issues.length === 1 ? '' : 's'} (${errorCount} errors, ${warningCount} warnings, ${suggestionCount} suggestions).`;
   
   return {
     issues,
