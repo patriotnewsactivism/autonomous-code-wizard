@@ -6,6 +6,71 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+
+function extractJsonPayload(rawText: string): string | null {
+  if (!rawText) {
+    return null;
+  }
+
+  const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = (fenceMatch ? fenceMatch[1] : rawText).trim();
+
+  if (!candidate) {
+    return null;
+  }
+
+  if (
+    (candidate.startsWith('{') && candidate.endsWith('}')) ||
+    (candidate.startsWith('[') && candidate.endsWith(']'))
+  ) {
+    return candidate;
+  }
+
+  const startIndex = candidate.search(/[\[{]/);
+  if (startIndex === -1) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = startIndex; i < candidate.length; i += 1) {
+    const ch = candidate[i];
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{' || ch === '[') {
+      depth += 1;
+    } else if (ch === '}' || ch === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        return candidate.slice(startIndex, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -115,17 +180,19 @@ Return ONLY a valid JSON object (no markdown formatting like \`\`\`json) with th
     // Try to parse the JSON response (keep this part)
     let parsedResult;
     try {
-      // Gemini might return JSON directly, or sometimes wrapped in markdown
-      const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/);
-      const jsonContent = jsonMatch ? jsonMatch[1].trim() : result.trim();
+      const jsonContent = extractJsonPayload(result);
+      if (!jsonContent) {
+        throw new Error('No JSON object found in AI response.');
+      }
       parsedResult = JSON.parse(jsonContent);
 
-       // Basic validation of expected structure
-       if (!parsedResult || typeof parsedResult !== 'object' || !Array.isArray(parsedResult.issues) || typeof parsedResult.fixedCode !== 'string') {
-          throw new Error("Parsed JSON does not match expected structure.");
-       }
+      // Basic validation of expected structure
+      if (!parsedResult || typeof parsedResult !== 'object' || !Array.isArray(parsedResult.issues) || typeof parsedResult.fixedCode !== 'string') {
+        throw new Error('Parsed JSON does not match expected structure.');
+      }
 
     } catch (e) {
+
       console.error('Failed to parse AI response as JSON:', e, 'Raw response:', result);
       // Fallback if JSON parsing fails
       parsedResult = {
