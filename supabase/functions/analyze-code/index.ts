@@ -78,7 +78,28 @@ serve(async (req) => {
   }
 
   try {
-    const { code } = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      console.error('Invalid JSON payload:', parseError);
+      return new Response(
+        JSON.stringify({
+          error: 'Invalid JSON payload',
+          details: parseError instanceof Error ? parseError.message : 'Unexpected request format',
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!body || typeof body !== 'object') {
+      return new Response(
+        JSON.stringify({ error: 'Request body must be a JSON object' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { code } = body as { code?: string };
 
     if (!code) {
       return new Response(
