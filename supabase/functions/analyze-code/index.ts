@@ -19,19 +19,14 @@ function extractJsonPayload(rawText: string): string | null {
     return null;
   }
 
-  if (
-    (candidate.startsWith('{') && candidate.endsWith('}')) ||
-    (candidate.startsWith('[') && candidate.endsWith(']'))
-  ) {
-    return candidate;
-  }
-
+  // Always locate the first JSON-looking structure and trim any trailing text so
+  // "Unexpected non-whitespace character after JSON" errors are avoided.
   const startIndex = candidate.search(/[\[{]/);
   if (startIndex === -1) {
     return null;
   }
 
-  let depth = 0;
+  const stack: string[] = [];
   let inString = false;
   let escape = false;
 
@@ -41,13 +36,9 @@ function extractJsonPayload(rawText: string): string | null {
     if (inString) {
       if (escape) {
         escape = false;
-        continue;
-      }
-      if (ch === '\\') {
+      } else if (ch === '\\') {
         escape = true;
-        continue;
-      }
-      if (ch === '"') {
+      } else if (ch === '"') {
         inString = false;
       }
       continue;
@@ -59,11 +50,21 @@ function extractJsonPayload(rawText: string): string | null {
     }
 
     if (ch === '{' || ch === '[') {
-      depth += 1;
-    } else if (ch === '}' || ch === ']') {
-      depth -= 1;
-      if (depth === 0) {
-        return candidate.slice(startIndex, i + 1);
+      stack.push(ch);
+      continue;
+    }
+
+    if (ch === '}' || ch === ']') {
+      const last = stack.pop();
+      if (!last) {
+        return null;
+      }
+      if ((last === '{' && ch !== '}') || (last === '[' && ch !== ']')) {
+        return null;
+      }
+
+      if (stack.length === 0) {
+        return candidate.slice(startIndex, i + 1).trimEnd();
       }
     }
   }
