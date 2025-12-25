@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -6,12 +6,20 @@ import { Loader2, Github, GitPullRequest, FileCode } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 
+interface AnalysisIssue {
+  type: 'error' | 'warning' | 'suggestion';
+  category: string;
+  line?: number;
+  description: string;
+  severity: string;
+}
+
 interface RepoFile {
   path: string;
   content: string;
   sha: string;
   fixedContent?: string;
-  issues?: any[];
+  issues?: AnalysisIssue[];
 }
 
 interface RepoData {
@@ -29,6 +37,11 @@ export const GitHubSync = () => {
   const [isPushing, setIsPushing] = useState(false);
   const { toast } = useToast();
 
+  const backendUrl = useMemo(
+    () => `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1`,
+    []
+  );
+
   const fetchRepo = async () => {
     if (!repoUrl.trim()) {
       toast({
@@ -44,16 +57,13 @@ export const GitHubSync = () => {
     setAnalyzedFiles([]);
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/fetch-repo`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ repoUrl }),
-        }
-      );
+      const response = await fetch(`${backendUrl}/fetch-repo`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ repoUrl }),
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -83,41 +93,47 @@ export const GitHubSync = () => {
     if (!repoData) return;
 
     setIsLoading(true);
-    const analyzed: RepoFile[] = [];
 
-    for (const file of repoData.files) {
-      try {
-        const response = await fetch(
-          `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/analyze-code`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ code: file.content }),
+    try {
+      const fileAnalyses = await Promise.all(
+        repoData.files.map(async (file) => {
+          try {
+            const response = await fetch(`${backendUrl}/analyze-code`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ code: file.content }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Analysis failed');
+            }
+
+            const result = await response.json();
+            return {
+              ...file,
+              fixedContent: result.fixedCode,
+              issues: result.issues as AnalysisIssue[],
+            } satisfies RepoFile;
+          } catch (error) {
+            console.error(`Failed to analyze ${file.path}:`, error);
+            return null;
           }
-        );
+        })
+      );
 
-        if (response.ok) {
-          const result = await response.json();
-          analyzed.push({
-            ...file,
-            fixedContent: result.fixedCode,
-            issues: result.issues,
-          });
-        }
-      } catch (error) {
-        console.error(`Failed to analyze ${file.path}:`, error);
-      }
+      const successfulAnalyses = fileAnalyses.filter((file): file is RepoFile => Boolean(file));
+      setAnalyzedFiles(successfulAnalyses);
+
+      toast({
+        title: 'Analysis complete',
+        description: `Analyzed ${successfulAnalyses.length} files`,
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    setAnalyzedFiles(analyzed);
-    setIsLoading(false);
-    
-    toast({
-      title: 'Analysis complete',
-      description: `Analyzed ${analyzed.length} files`,
-    });
   };
 
   const pushFixes = async () => {
@@ -143,20 +159,17 @@ export const GitHubSync = () => {
         return;
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/push-fixes`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            owner: repoData.owner,
-            repo: repoData.repo,
-            files: filesToUpdate,
-          }),
-        }
-      );
+      const response = await fetch(`${backendUrl}/push-fixes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          owner: repoData.owner,
+          repo: repoData.repo,
+          files: filesToUpdate,
+        }),
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
