@@ -1,198 +1,111 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Card } from '@/components/ui/card';
-import { Loader2, Code2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, Code2, Save, Play, Terminal, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
-interface Issue {
-  type: 'error' | 'warning' | 'suggestion';
-  category: string;
-  line?: number;
-  description: string;
-  severity: string;
+interface CodeEditorProps {
+  initialCode?: string;
+  fileName?: string;
+  onSave?: (content: string) => void;
 }
 
-interface AnalysisResult {
-  issues: Issue[];
-  fixedCode: string;
-  summary: string;
-}
-
-export const CodeEditor = () => {
-  const [code, setCode] = useState('');
+export const CodeEditor = ({ initialCode = '', fileName = 'Untitled', onSave }: CodeEditorProps) => {
+  const [code, setCode] = useState(initialCode);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [logs, setLogs] = useState<any[]>([]);
   const { toast } = useToast();
 
-  const analyzeCode = async () => {
-    if (!code.trim()) {
-      toast({
-        title: 'No code provided',
-        description: 'Please paste some code to analyze',
-        variant: 'destructive',
-      });
-      return;
-    }
+  useEffect(() => {
+    setCode(initialCode);
+  }, [initialCode]);
 
-    setIsAnalyzing(true);
-    setResult(null);
-
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/analyze-code`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ code }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to analyze code');
-      }
-
-      const data = await response.json();
-      setResult(data);
-      
-      toast({
-        title: 'Analysis complete',
-        description: `Found ${data.issues?.length || 0} issues`,
-      });
-    } catch (error) {
-      console.error('Analysis error:', error);
-      toast({
-        title: 'Analysis failed',
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsAnalyzing(false);
+  const handleSave = () => {
+    if (onSave) {
+        onSave(code);
     }
   };
 
-  const applyFix = () => {
-    if (result?.fixedCode) {
-      setCode(result.fixedCode);
-      toast({
-        title: 'Code updated',
-        description: 'Fixed code has been applied',
-      });
+  const runCode = () => {
+    setLogs([]); 
+    const capturedLogs: any[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+
+    const addLog = (type: string, ...args: any[]) => {
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+      capturedLogs.push({ type, message, timestamp: Date.now() });
+      setLogs(prev => [...prev, { type, message, timestamp: Date.now() }]);
+    };
+
+    console.log = (...args) => addLog('log', ...args);
+    console.error = (...args) => addLog('error', ...args);
+
+    try {
+      // eslint-disable-next-line no-new-func
+      new Function(code)();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <div>
-          <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+    <div className="flex flex-col h-full bg-slate-950">
+      <div className="flex items-center justify-between p-2 border-b border-slate-800 bg-slate-900/50">
+          <div className="flex items-center gap-2">
             <Code2 className="h-4 w-4 text-primary" />
-            Your Code
-          </label>
-          <Textarea
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="Paste your code here..."
-            className="font-mono min-h-[300px] bg-secondary/50 border-border transition-all focus:border-primary"
-          />
-        </div>
-        
-        <Button 
-          onClick={analyzeCode} 
-          disabled={isAnalyzing}
-          className="w-full bg-gradient-to-r from-primary to-cyan-500 hover:from-primary/90 hover:to-cyan-500/90 shadow-[var(--shadow-glow)]"
-        >
-          {isAnalyzing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              <Code2 className="mr-2 h-4 w-4" />
-              Analyze & Fix Code
-            </>
-          )}
-        </Button>
+            <span className="text-sm font-medium text-slate-200">{fileName}</span>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              onClick={runCode}
+              variant="secondary"
+              size="sm"
+              className="h-7 text-xs bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-600/30"
+            >
+              <Play className="mr-2 h-3 w-3" />
+              Run
+            </Button>
+            <Button 
+              onClick={handleSave} 
+              size="sm"
+              className="h-7 text-xs bg-primary/20 text-primary hover:bg-primary/30 border border-primary/30"
+            >
+              <Save className="mr-2 h-3 w-3" />
+              Save
+            </Button>
+          </div>
+      </div>
+      
+      <div className="flex-1 relative">
+        <Textarea
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="// Start typing..."
+          className="absolute inset-0 w-full h-full font-mono text-sm bg-slate-950 text-slate-100 border-none focus-visible:ring-0 resize-none p-4 leading-relaxed"
+          spellCheck={false}
+        />
       </div>
 
-      {result && (
-        <div className="space-y-4 animate-in fade-in duration-500">
-          {result.summary && (
-            <Card className="p-6 bg-gradient-to-br from-card to-card/50 border-primary/20 shadow-[var(--shadow-card)]">
-              <h3 className="font-semibold mb-2 flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
-                Summary
-              </h3>
-              <p className="text-muted-foreground">{result.summary}</p>
-            </Card>
-          )}
-
-          {result.issues && result.issues.length > 0 && (
-            <Card className="p-6 bg-gradient-to-br from-card to-card/50 border-border shadow-[var(--shadow-card)]">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-warning" />
-                Issues Found ({result.issues.length})
-              </h3>
-              <div className="space-y-3">
-                {result.issues.map((issue, idx) => (
-                  <div
-                    key={idx}
-                    className="flex gap-3 p-4 rounded-lg bg-secondary/50 border border-border/50 transition-all hover:bg-secondary hover:border-primary/20"
-                  >
-                    {issue.type === 'error' ? (
-                      <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <CheckCircle2 className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm capitalize px-2 py-0.5 rounded bg-primary/20 text-primary">
-                          {issue.type}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {issue.category}
-                        </span>
-                        {issue.line && (
-                          <span className="text-xs text-muted-foreground font-mono">
-                            Line {issue.line}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-foreground leading-relaxed">{issue.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {result.fixedCode && (
-            <Card className="p-6 bg-gradient-to-br from-card to-card/50 border-success/20 shadow-[var(--shadow-card)]">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-success" />
-                  Fixed Code
-                </h3>
-                <Button 
-                  onClick={applyFix} 
-                  variant="outline" 
-                  size="sm"
-                  className="border-success/30 text-success hover:bg-success/10"
-                >
-                  Apply Fix
+      {logs.length > 0 && (
+        <div className="h-1/3 border-t border-slate-800 flex flex-col bg-slate-900/30">
+            <div className="p-2 border-b border-slate-800 flex justify-between items-center">
+                <span className="text-xs font-semibold text-slate-500 uppercase">Local Output</span>
+                <Button variant="ghost" size="icon" className="h-4 w-4" onClick={() => setLogs([])}>
+                    <Trash2 className="h-3 w-3" />
                 </Button>
-              </div>
-              <Textarea
-                value={result.fixedCode}
-                readOnly
-                className="font-mono min-h-[300px] bg-secondary/50 border-border"
-              />
-            </Card>
-          )}
+            </div>
+            <ScrollArea className="flex-1 p-2 font-mono text-xs">
+                {logs.map((log, i) => (
+                    <div key={i} className={log.type === 'error' ? 'text-red-400' : 'text-slate-300'}>
+                        {log.message}
+                    </div>
+                ))}
+            </ScrollArea>
         </div>
       )}
     </div>

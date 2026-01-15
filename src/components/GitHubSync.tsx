@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Loader2, Github, GitPullRequest, FileCode } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Loader2, Github, GitPullRequest, FileCode, CheckCircle2, AlertTriangle, File, ChevronRight, Play } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 
@@ -22,10 +23,11 @@ interface RepoData {
 }
 
 export const GitHubSync = () => {
-  const [repoUrl, setRepoUrl] = useState('');
+  const [repoUrl, setRepoUrl] = useState('https://github.com/facebook/react');
   const [isLoading, setIsLoading] = useState(false);
   const [repoData, setRepoData] = useState<RepoData | null>(null);
-  const [analyzedFiles, setAnalyzedFiles] = useState<RepoFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<RepoFile | null>(null);
+  const [analyzedFiles, setAnalyzedFiles] = useState<Map<string, RepoFile>>(new Map());
   const [isPushing, setIsPushing] = useState(false);
   const { toast } = useToast();
 
@@ -41,27 +43,26 @@ export const GitHubSync = () => {
 
     setIsLoading(true);
     setRepoData(null);
-    setAnalyzedFiles([]);
+    setSelectedFile(null);
+    setAnalyzedFiles(new Map());
 
     try {
       const response = await fetch(
         `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/fetch-repo`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ repoUrl }),
         }
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch repository');
-      }
+      if (!response.ok) throw new Error('Failed to fetch repository');
 
       const data = await response.json();
       setRepoData(data);
+      if (data.files.length > 0) {
+        setSelectedFile(data.files[0]);
+      }
       
       toast({
         title: 'Repository loaded',
@@ -79,54 +80,58 @@ export const GitHubSync = () => {
     }
   };
 
-  const analyzeFiles = async () => {
-    if (!repoData) return;
-
-    setIsLoading(true);
-    const analyzed: RepoFile[] = [];
-
-    for (const file of repoData.files) {
-      try {
-        const response = await fetch(
-          `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/analyze-code`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ code: file.content }),
-          }
-        );
-
-        if (response.ok) {
-          const result = await response.json();
-          analyzed.push({
-            ...file,
-            fixedContent: result.fixedCode,
-            issues: result.issues,
-          });
+  const analyzeSingleFile = async (file: RepoFile) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/analyze-code`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: file.content }),
         }
-      } catch (error) {
-        console.error(`Failed to analyze ${file.path}:`, error);
-      }
-    }
+      );
 
-    setAnalyzedFiles(analyzed);
-    setIsLoading(false);
+      if (response.ok) {
+        const result = await response.json();
+        const updatedFile = {
+          ...file,
+          fixedContent: result.fixedCode,
+          issues: result.issues,
+        };
+        
+        setAnalyzedFiles(prev => new Map(prev).set(file.path, updatedFile));
+        
+        if (selectedFile?.path === file.path) {
+            setSelectedFile(updatedFile);
+        }
+
+        return updatedFile;
+      }
+    } catch (error) {
+      console.error(`Failed to analyze ${file.path}:`, error);
+    }
+    return null;
+  };
+
+  const analyzeAll = async () => {
+    if (!repoData) return;
+    setIsLoading(true);
+    let count = 0;
     
-    toast({
-      title: 'Analysis complete',
-      description: `Analyzed ${analyzed.length} files`,
-    });
+    // Process in parallel roughly
+    const promises = repoData.files.map(f => analyzeSingleFile(f));
+    await Promise.all(promises);
+    
+    setIsLoading(false);
+    toast({ title: 'Analysis complete', description: `Analyzed all files` });
   };
 
   const pushFixes = async () => {
-    if (!repoData || analyzedFiles.length === 0) return;
-
+    if (!repoData || analyzedFiles.size === 0) return;
     setIsPushing(true);
 
     try {
-      const filesToUpdate = analyzedFiles
+      const filesToUpdate = Array.from(analyzedFiles.values())
         .filter(f => f.fixedContent && f.fixedContent !== f.content)
         .map(f => ({
           path: f.path,
@@ -135,10 +140,7 @@ export const GitHubSync = () => {
         }));
 
       if (filesToUpdate.length === 0) {
-        toast({
-          title: 'No changes to push',
-          description: 'All files are already correct',
-        });
+        toast({ title: 'No changes', description: 'No fixes to push.' });
         setIsPushing(false);
         return;
       }
@@ -147,9 +149,7 @@ export const GitHubSync = () => {
         `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/functions/v1/push-fixes`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             owner: repoData.owner,
             repo: repoData.repo,
@@ -158,149 +158,145 @@ export const GitHubSync = () => {
         }
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to push fixes');
-      }
-
+      if (!response.ok) throw new Error('Failed to push fixes');
       const result = await response.json();
       
-      toast({
-        title: 'Pull request created!',
-        description: `View PR #${result.pullRequestNumber}`,
-      });
-
-      // Open PR in new tab
+      toast({ title: 'PR Created!', description: `PR #${result.pullRequestNumber}` });
       window.open(result.pullRequestUrl, '_blank');
     } catch (error) {
-      console.error('Push error:', error);
-      toast({
-        title: 'Failed to push fixes',
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
-        variant: 'destructive',
-      });
+      toast({ title: 'Push failed', variant: 'destructive' });
     } finally {
       setIsPushing(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <div>
-          <label className="text-sm font-medium mb-2 block flex items-center gap-2">
-            <Github className="h-4 w-4 text-primary" />
-            GitHub Repository URL
-          </label>
-          <div className="flex gap-2">
-            <Input
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/owner/repo"
-              className="flex-1 bg-secondary/50 border-border transition-all focus:border-primary"
-            />
-            <Button 
-              onClick={fetchRepo} 
-              disabled={isLoading}
-              className="bg-gradient-to-r from-primary to-cyan-500 hover:from-primary/90 hover:to-cyan-500/90 shadow-[var(--shadow-glow)]"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <Github className="mr-2 h-4 w-4" />
-                  Fetch Repo
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
+    <div className="h-[calc(100vh-200px)] min-h-[600px] flex flex-col gap-4">
+      {/* Top Bar */}
+      <div className="flex gap-2">
+        <Input
+          value={repoUrl}
+          onChange={(e) => setRepoUrl(e.target.value)}
+          placeholder="https://github.com/owner/repo"
+          className="flex-1 bg-slate-950 border-slate-800"
+        />
+        <Button onClick={fetchRepo} disabled={isLoading} className="bg-primary/20 text-primary hover:bg-primary/30">
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4 mr-2" />}
+          Load Repo
+        </Button>
       </div>
 
-      {repoData && (
-        <Card className="p-6 bg-gradient-to-br from-card to-card/50 border-primary/20 shadow-[var(--shadow-card)] animate-in fade-in duration-500">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <h3 className="font-semibold text-lg flex items-center gap-2">
-                  <Github className="h-5 w-5 text-primary" />
-                  {repoData.owner}/{repoData.repo}
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {repoData.files.length} files loaded (showing first 20 of {repoData.totalFiles})
-                </p>
-              </div>
-              <Button 
-                onClick={analyzeFiles} 
-                disabled={isLoading}
-                className="bg-gradient-to-r from-primary to-cyan-500 hover:from-primary/90 hover:to-cyan-500/90"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <FileCode className="mr-2 h-4 w-4" />
-                    Analyze All Files
-                  </>
-                )}
-              </Button>
-            </div>
-
-            {analyzedFiles.length > 0 && (
-              <div className="space-y-4 pt-4 border-t border-border">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <h4 className="font-medium flex items-center gap-2">
-                    <FileCode className="h-4 w-4 text-success" />
-                    Analysis Results
-                  </h4>
-                  <Button 
-                    onClick={pushFixes} 
-                    disabled={isPushing}
-                    className="bg-gradient-to-r from-success to-success/80 hover:from-success/90 hover:to-success/70"
-                  >
-                    {isPushing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating PR...
-                      </>
-                    ) : (
-                      <>
-                        <GitPullRequest className="mr-2 h-4 w-4" />
-                        Create Pull Request
-                      </>
-                    )}
-                  </Button>
+      {repoData ? (
+        <div className="grid grid-cols-[300px_1fr] gap-4 flex-1 overflow-hidden">
+            {/* Sidebar: File List */}
+            <Card className="bg-slate-950 border-slate-800 flex flex-col overflow-hidden">
+                <div className="p-3 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Explorer</span>
+                    <Button variant="ghost" size="icon" onClick={analyzeAll} title="Analyze All">
+                        <Play className="h-3 w-3" />
+                    </Button>
                 </div>
+                <ScrollArea className="flex-1">
+                    <div className="p-2 space-y-1">
+                        {repoData.files.map((file) => {
+                            const analysis = analyzedFiles.get(file.path);
+                            const issueCount = analysis?.issues?.length || 0;
+                            const isSelected = selectedFile?.path === file.path;
 
-                <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                  {analyzedFiles.map((file, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border/50 transition-all hover:bg-secondary hover:border-primary/20"
-                    >
-                      <div className="flex-1">
-                        <p className="font-mono text-sm text-primary">{file.path}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {file.issues?.length || 0} issues found
-                        </p>
-                      </div>
-                      {file.fixedContent !== file.content && (
-                        <Badge variant="outline" className="bg-success/20 text-success border-success/30">
-                          Fixed
-                        </Badge>
-                      )}
+                            return (
+                                <button
+                                    key={file.path}
+                                    onClick={() => setSelectedFile(analysis || file)}
+                                    className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                                        isSelected ? 'bg-primary/20 text-primary' : 'hover:bg-slate-900 text-slate-400'
+                                    }`}
+                                >
+                                    <File className="h-4 w-4 shrink-0" />
+                                    <span className="truncate flex-1">{file.path}</span>
+                                    {issueCount > 0 && (
+                                        <Badge variant="outline" className="text-[10px] h-4 px-1 border-yellow-500/50 text-yellow-500">
+                                            {issueCount}
+                                        </Badge>
+                                    )}
+                                    {analysis && issueCount === 0 && (
+                                         <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+                </ScrollArea>
+                 <div className="p-3 border-t border-slate-800">
+                     <Button 
+                        onClick={pushFixes} 
+                        disabled={isPushing || analyzedFiles.size === 0} 
+                        className="w-full bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-600/30"
+                    >
+                         {isPushing ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitPullRequest className="h-4 w-4 mr-2" />}
+                         Push Fixes
+                     </Button>
+                 </div>
+            </Card>
+
+            {/* Main: Content Preview */}
+            <Card className="bg-slate-950 border-slate-800 flex flex-col overflow-hidden">
+                {selectedFile ? (
+                    <>
+                        <div className="p-3 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-200">{selectedFile.path}</span>
+                            <Button 
+                                size="sm" 
+                                variant="secondary" 
+                                onClick={() => analyzeSingleFile(selectedFile)}
+                                className="h-7 text-xs"
+                            >
+                                <FileCode className="h-3 w-3 mr-2" />
+                                Analyze File
+                            </Button>
+                        </div>
+                        <div className="grid grid-rows-[1fr_auto] h-full overflow-hidden">
+                            <ScrollArea className="flex-1 bg-slate-950 p-4 font-mono text-sm text-slate-300">
+                                <pre>{selectedFile.content}</pre>
+                            </ScrollArea>
+                            
+                            {/* Issues Panel */}
+                            {selectedFile.issues && selectedFile.issues.length > 0 && (
+                                <div className="h-[200px] border-t border-slate-800 bg-slate-900/30 overflow-hidden flex flex-col">
+                                    <div className="p-2 bg-slate-900/50 border-b border-slate-800 text-xs font-semibold text-muted-foreground uppercase">
+                                        Problems
+                                    </div>
+                                    <ScrollArea className="flex-1 p-2">
+                                        <div className="space-y-2">
+                                            {selectedFile.issues.map((issue: any, i: number) => (
+                                                <div key={i} className="flex gap-2 text-xs p-2 rounded bg-slate-900 border border-slate-800">
+                                                    <AlertTriangle className={`h-4 w-4 ${issue.type === 'error' ? 'text-red-500' : 'text-yellow-500'}`} />
+                                                    <div className="flex-1">
+                                                        <div className="font-medium text-slate-200">
+                                                            Line {issue.line}: {issue.message}
+                                                        </div>
+                                                        <div className="text-slate-500 mt-1">{issue.description}</div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex items-center justify-center h-full text-slate-500">
+                        Select a file to view
+                    </div>
+                )}
+            </Card>
+        </div>
+      ) : (
+        <Card className="flex-1 flex items-center justify-center bg-slate-950/50 border-dashed border-slate-800">
+            <div className="text-center space-y-2 text-muted-foreground">
+                <Github className="h-10 w-10 mx-auto opacity-50" />
+                <p>Enter a repository URL to start</p>
+            </div>
         </Card>
       )}
     </div>
