@@ -133,6 +133,87 @@ app.post('/api/terminal/exec', async (req, res) => {
 });
 
 
+// --- AI Agent API (Heuristic / Mock for now) ---
+app.post('/api/agent/prompt', async (req, res) => {
+    try {
+        const { prompt } = req.body;
+        const lowerPrompt = prompt.toLowerCase();
+        let message = "I'm not sure how to do that yet.";
+        let actions = [];
+
+        // 1. Create Component Intent
+        // Regex to match "create component [Name]" or "create [Name] component"
+        const createCompMatch = lowerPrompt.match(/create (?:component )?(\w+)(?: component)?/);
+        
+        if (createCompMatch && (lowerPrompt.includes('component') || lowerPrompt.includes('react'))) {
+            const compName = createCompMatch[1].charAt(0).toUpperCase() + createCompMatch[1].slice(1); // PascalCase
+            const compContent = `import React from 'react';
+
+export const ${compName} = () => {
+  return (
+    <div className="p-4 border rounded shadow">
+      <h2 className="text-xl font-bold">${compName}</h2>
+      <p>Content goes here...</p>
+    </div>
+  );
+};
+`;
+            const filePath = `src/components/${compName}.tsx`;
+            const fullPath = path.join(WORKSPACE_DIR, filePath);
+            
+            // Ensure dir exists
+            await fs.mkdir(path.dirname(fullPath), { recursive: true });
+            await fs.writeFile(fullPath, compContent);
+            
+            message = `I've created the ${compName} component for you at ${filePath}.`;
+            actions.push({ type: 'create_file', path: filePath });
+        }
+        
+        // 2. Install Package Intent
+        else if (lowerPrompt.startsWith('install ') || lowerPrompt.startsWith('add ')) {
+            const pkgName = prompt.split(' ')[1];
+            message = `Installing ${pkgName}...`;
+            // We don't await this to avoid timeout, we just start it (or we could await)
+            // For better UX, we'll await short installs
+            try {
+                await execAsync(`npm install ${pkgName}`, { cwd: WORKSPACE_DIR });
+                message = `Successfully installed ${pkgName}.`;
+                actions.push({ type: 'command', command: `npm install ${pkgName}` });
+            } catch (e) {
+                message = `Failed to install ${pkgName}: ${e.message}`;
+            }
+        }
+
+        // 3. Create File Intent
+        else if (lowerPrompt.startsWith('create file ') || lowerPrompt.startsWith('make file ')) {
+            const filePath = prompt.split(' ')[2];
+            if (filePath) {
+                const fullPath = path.join(WORKSPACE_DIR, filePath);
+                await fs.mkdir(path.dirname(fullPath), { recursive: true });
+                await fs.writeFile(fullPath, '// New file created by Agent');
+                message = `Created file ${filePath}.`;
+                actions.push({ type: 'create_file', path: filePath });
+            }
+        }
+
+        // 4. Explain Intent
+        else if (lowerPrompt.startsWith('explain')) {
+            message = "This looks like a standard React application structure. 'src' contains your source code, 'components' has your UI widgets, and 'App.tsx' is the main entry point.";
+        }
+        
+        // 5. Default "Chat" response
+        else {
+             message = "I can help you create components, install packages, or explain code. Try saying 'Create Header component' or 'Install lodash'.";
+        }
+
+        res.json({ message, actions });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
 // --- Analysis Logic (Kept for compatibility) ---
 
 function analyzeCode(code) {

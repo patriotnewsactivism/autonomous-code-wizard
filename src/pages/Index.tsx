@@ -3,6 +3,7 @@ import { WorkspaceManager } from '@/components/WorkspaceManager';
 import { CloudWorkspaceManager } from '@/components/CloudWorkspaceManager';
 import { BuilderConsole } from '@/components/BuilderConsole';
 import { CodeEditor } from '@/components/CodeEditor';
+import { AIAssistant } from '@/components/AIAssistant';
 import { AuthDialog } from '@/components/AuthDialog';
 import { Sparkles, LayoutDashboard, Settings, User, Cloud, HardDrive, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -136,7 +137,7 @@ const Index = () => {
       {/* Main Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
-        <div className="w-72 shrink-0 flex flex-col bg-slate-950 border-r border-slate-800">
+        <div className="w-64 shrink-0 flex flex-col bg-slate-950 border-r border-slate-800">
             {mode === 'local' ? (
                 <WorkspaceManager onFileSelect={handleFileSelect} selectedFile={selectedFile} />
             ) : (
@@ -168,6 +169,11 @@ const Index = () => {
             <div className="h-48 shrink-0">
                 <BuilderConsole />
             </div>
+        </div>
+
+        {/* Right Sidebar: AI Assistant */}
+        <div className="w-[300px] shrink-0 border-l border-slate-800 hidden lg:block">
+            <AIAssistant />
         </div>
       </div>
 
