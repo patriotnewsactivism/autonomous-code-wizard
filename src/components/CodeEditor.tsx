@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Code2, Save, Play, Terminal, Trash2 } from 'lucide-react';
+import { Loader2, Code2, Save, Play, Terminal, Trash2, Sparkles, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -15,6 +15,7 @@ export const CodeEditor = ({ initialCode = '', fileName = 'Untitled', onSave }: 
   const [code, setCode] = useState(initialCode);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
+  const [issues, setIssues] = useState<any[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -24,6 +25,51 @@ export const CodeEditor = ({ initialCode = '', fileName = 'Untitled', onSave }: 
   const handleSave = () => {
     if (onSave) {
         onSave(code);
+    }
+  };
+
+  const analyzeCode = async () => {
+    setIsAnalyzing(true);
+    setIssues([]);
+    try {
+        const res = await fetch('http://localhost:3001/functions/v1/analyze-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+        
+        if (!res.ok) throw new Error('Analysis failed');
+
+        const data = await res.json();
+        if (data.issues) setIssues(data.issues);
+        
+        if (data.fixedCode && data.fixedCode !== code) {
+            toast({ 
+                title: "Fixes Available", 
+                description: "Auto-fixes can be applied.",
+                action: (
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="bg-green-600 text-white border-none hover:bg-green-700"
+                        onClick={() => {
+                            setCode(data.fixedCode);
+                            toast({ title: "Applied", description: "Code updated." });
+                        }}
+                    >
+                        Apply Fixes
+                    </Button>
+                ),
+            });
+        }
+        
+        toast({ title: "Analysis Complete", description: `Found ${data.issues?.length || 0} issues.` });
+
+    } catch (e) {
+        console.error(e);
+        toast({ title: "Error", description: "Failed to connect to analysis engine. Is the server running?", variant: "destructive"});
+    } finally {
+        setIsAnalyzing(false);
     }
   };
 
@@ -62,6 +108,15 @@ export const CodeEditor = ({ initialCode = '', fileName = 'Untitled', onSave }: 
           </div>
           <div className="flex gap-2">
             <Button 
+              onClick={analyzeCode}
+              disabled={isAnalyzing}
+              size="sm"
+              className="h-7 text-xs bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 border border-purple-600/30"
+            >
+              {isAnalyzing ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Sparkles className="mr-2 h-3 w-3" />}
+              Analyze
+            </Button>
+            <Button 
               onClick={runCode}
               variant="secondary"
               size="sm"
@@ -91,17 +146,33 @@ export const CodeEditor = ({ initialCode = '', fileName = 'Untitled', onSave }: 
         />
       </div>
 
-      {logs.length > 0 && (
+      {(logs.length > 0 || issues.length > 0) && (
         <div className="h-1/3 border-t border-slate-800 flex flex-col bg-slate-900/30">
             <div className="p-2 border-b border-slate-800 flex justify-between items-center">
-                <span className="text-xs font-semibold text-slate-500 uppercase">Local Output</span>
-                <Button variant="ghost" size="icon" className="h-4 w-4" onClick={() => setLogs([])}>
+                <div className="flex gap-4">
+                    <span className={`text-xs font-semibold uppercase cursor-pointer ${logs.length > 0 ? 'text-slate-300' : 'text-slate-600'}`}>Output ({logs.length})</span>
+                    <span className={`text-xs font-semibold uppercase cursor-pointer ${issues.length > 0 ? 'text-yellow-500' : 'text-slate-600'}`}>Issues ({issues.length})</span>
+                </div>
+                <Button variant="ghost" size="icon" className="h-4 w-4" onClick={() => { setLogs([]); setIssues([]); }}>
                     <Trash2 className="h-3 w-3" />
                 </Button>
             </div>
             <ScrollArea className="flex-1 p-2 font-mono text-xs">
+                {issues.length > 0 && (
+                    <div className="mb-4 space-y-2">
+                        {issues.map((issue, i) => (
+                             <div key={i} className="flex gap-2 text-xs p-2 rounded bg-slate-900 border border-yellow-900/50 text-slate-300">
+                                <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+                                <div>
+                                    <span className="text-yellow-500 font-bold">Line {issue.line}:</span> {issue.message}
+                                </div>
+                             </div>
+                        ))}
+                    </div>
+                )}
                 {logs.map((log, i) => (
                     <div key={i} className={log.type === 'error' ? 'text-red-400' : 'text-slate-300'}>
+                        <span className="opacity-50 mr-2">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
                         {log.message}
                     </div>
                 ))}
